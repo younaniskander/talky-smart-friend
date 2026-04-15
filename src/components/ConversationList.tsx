@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { MessageCircle, Video, Image as ImageIcon, Plus, Trash2, Clock } from "lucide-react";
+import { MessageCircle, Video, Image as ImageIcon, Plus, Trash2, Clock, Pencil, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface Conversation {
@@ -37,6 +37,9 @@ const modeIcons: Record<string, typeof MessageCircle> = {
 
 export function ConversationList({ activeId, onSelect, mode }: ConversationListProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const editInputRef = useRef<HTMLInputElement>(null);
   const { user } = useAuth();
 
   const load = async () => {
@@ -58,6 +61,29 @@ export function ConversationList({ activeId, onSelect, mode }: ConversationListP
     await supabase.from("conversations").delete().eq("id", id);
     if (activeId === id) onSelect(null);
     load();
+  };
+
+  const startRename = (id: string, currentTitle: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingId(id);
+    setEditTitle(currentTitle);
+    setTimeout(() => editInputRef.current?.focus(), 50);
+  };
+
+  const confirmRename = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (!editingId || !editTitle.trim()) {
+      setEditingId(null);
+      return;
+    }
+    await supabase.from("conversations").update({ title: editTitle.trim() }).eq("id", editingId);
+    setEditingId(null);
+    load();
+  };
+
+  const cancelRename = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setEditingId(null);
   };
 
   const Icon = modeIcons[mode] || MessageCircle;
@@ -93,18 +119,50 @@ export function ConversationList({ activeId, onSelect, mode }: ConversationListP
           >
             <Icon className={`w-3.5 h-3.5 flex-shrink-0 mt-0.5 ${activeId === c.id ? "text-primary" : ""}`} />
             <div className="flex-1 min-w-0">
-              <span className="block truncate text-xs font-medium">{c.title}</span>
-              <span className="flex items-center gap-1 text-[10px] text-muted-foreground/50 mt-0.5">
-                <Clock className="w-2.5 h-2.5" />
-                {timeAgo(c.updated_at)}
-              </span>
+              {editingId === c.id ? (
+                <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                  <input
+                    ref={editInputRef}
+                    value={editTitle}
+                    onChange={e => setEditTitle(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") confirmRename(); if (e.key === "Escape") cancelRename(); }}
+                    className="text-xs font-medium bg-muted/50 border border-border/30 rounded-md px-1.5 py-0.5 w-full outline-none focus:border-primary/40 text-foreground"
+                  />
+                  <button onClick={confirmRename} className="text-primary hover:text-primary/80 flex-shrink-0">
+                    <Check className="w-3 h-3" />
+                  </button>
+                  <button onClick={cancelRename} className="text-muted-foreground hover:text-foreground flex-shrink-0">
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <span className="block truncate text-xs font-medium">{c.title}</span>
+                  <span className="flex items-center gap-1 text-[10px] text-muted-foreground/50 mt-0.5">
+                    <Clock className="w-2.5 h-2.5" />
+                    {timeAgo(c.updated_at)}
+                  </span>
+                </>
+              )}
             </div>
-            <button
-              onClick={(e) => handleDelete(c.id, e)}
-              className="opacity-0 group-hover:opacity-100 text-muted-foreground/40 hover:text-destructive transition-all mt-0.5"
-            >
-              <Trash2 className="w-3 h-3" />
-            </button>
+            {editingId !== c.id && (
+              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all mt-0.5">
+                <button
+                  onClick={(e) => startRename(c.id, c.title, e)}
+                  className="text-muted-foreground/40 hover:text-primary transition-colors p-0.5"
+                  title="Rename"
+                >
+                  <Pencil className="w-2.5 h-2.5" />
+                </button>
+                <button
+                  onClick={(e) => handleDelete(c.id, e)}
+                  className="text-muted-foreground/40 hover:text-destructive transition-colors p-0.5"
+                  title="Delete"
+                >
+                  <Trash2 className="w-2.5 h-2.5" />
+                </button>
+              </div>
+            )}
           </button>
         ))}
         {conversations.length === 0 && (
